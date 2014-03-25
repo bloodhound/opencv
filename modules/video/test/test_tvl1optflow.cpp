@@ -133,13 +133,14 @@ namespace
                 }
             }
         }
+
         return sqrt(sum / (1e-9 + counter));
     }
 }
 
 TEST(Video_calcOpticalFlowDual_TVL1, Regression)
 {
-    const double MAX_RMSE = 0.03;
+    const double MAX_RMSE = 0.02;
 
     const string frame1_path = TS::ptr()->get_data_path() + "optflow/RubberWhale1.png";
     const string frame2_path = TS::ptr()->get_data_path() + "optflow/RubberWhale2.png";

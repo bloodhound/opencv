@@ -26,7 +26,7 @@ OCL_PERF_TEST(Photo, DenoisingGrayscale)
     OCL_TEST_CYCLE()
             cv::fastNlMeansDenoising(original, result, 10);
 
-    SANITY_CHECK(result, 1);
+    SANITY_CHECK(result);
 }
 
 OCL_PERF_TEST(Photo, DenoisingColored)
@@ -42,10 +42,10 @@ OCL_PERF_TEST(Photo, DenoisingColored)
     OCL_TEST_CYCLE()
             cv::fastNlMeansDenoisingColored(original, result, 10, 10);
 
-    SANITY_CHECK(result, 2);
+    SANITY_CHECK(result);
 }
 
-OCL_PERF_TEST(Photo, DISABLED_DenoisingGrayscaleMulti)
+OCL_PERF_TEST(Photo, DenoisingGrayscaleMulti)
 {
     const int imgs_count = 3;
 
@@ -68,7 +68,7 @@ OCL_PERF_TEST(Photo, DISABLED_DenoisingGrayscaleMulti)
     SANITY_CHECK(result);
 }
 
-OCL_PERF_TEST(Photo, DISABLED_DenoisingColoredMulti)
+OCL_PERF_TEST(Photo, DenoisingColoredMulti)
 {
     const int imgs_count = 3;
 

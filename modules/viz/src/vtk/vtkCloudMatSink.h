@@ -46,32 +46,26 @@
 #define __vtkCloudMatSink_h
 
 #include <opencv2/core.hpp>
-#include <vtkWriter.h>
+#include <vtkPolyDataWriter.h>
 
 namespace cv
 {
     namespace viz
     {
-        class vtkCloudMatSink : public vtkWriter
+        class vtkCloudMatSink : public vtkPolyDataWriter
         {
         public:
           static vtkCloudMatSink *New();
-          vtkTypeMacro(vtkCloudMatSink,vtkWriter)
+          vtkTypeMacro(vtkCloudMatSink,vtkPolyDataWriter)
           void PrintSelf(ostream& os, vtkIndent indent);
 
           void SetOutput(OutputArray cloud, OutputArray colors = noArray(), OutputArray normals = noArray(), OutputArray tcoords = noArray());
-
-          // Description:
-          // Get the input to this writer.
-          vtkPolyData* GetInput();
-          vtkPolyData* GetInput(int port);
 
         protected:
           vtkCloudMatSink();
           ~vtkCloudMatSink();
 
           void WriteData();
-          int FillInputPortInformation(int port, vtkInformation *info);
 
           _OutputArray cloud, colors, normals, tcoords;
 

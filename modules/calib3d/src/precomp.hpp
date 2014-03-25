@@ -49,8 +49,6 @@
 
 #include "opencv2/core/private.hpp"
 
-#include "opencv2/core/ocl.hpp"
-
 #ifdef HAVE_TEGRA_OPTIMIZATION
 #include "opencv2/calib3d/calib3d_tegra.hpp"
 #else

@@ -175,6 +175,7 @@ public class NativeCameraView extends CameraBridgeViewBase {
                 }
 
                 deliverAndDrawFrame(mFrame);
+
             } while (!mStopThread);
         }
     }

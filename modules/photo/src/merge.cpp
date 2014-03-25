@@ -208,7 +208,7 @@ public:
             if(channels == 3) {
                 weights[i] = weights[i].mul(saturation);
             }
-            weights[i] = weights[i].mul(wellexp) + 1e-12f;
+            weights[i] = weights[i].mul(wellexp);
             weight_sum += weights[i];
         }
         int maxlevel = static_cast<int>(logf(static_cast<float>(min(size.width, size.height))) / logf(2.0f));

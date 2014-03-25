@@ -63,8 +63,6 @@ namespace cv
 
             Color(const Scalar& color);
 
-            operator Vec3b() const;
-
             static Color black();
             static Color blue();
             static Color green();
@@ -194,8 +192,6 @@ inline cv::viz::Color::Color() : Scalar(0, 0, 0) {}
 inline cv::viz::Color::Color(double _gray) : Scalar(_gray, _gray, _gray) {}
 inline cv::viz::Color::Color(double _blue, double _green, double _red) : Scalar(_blue, _green, _red) {}
 inline cv::viz::Color::Color(const Scalar& color) : Scalar(color) {}
-
-inline cv::viz::Color::operator cv::Vec3b() const { return cv::Vec3d(val); }
 
 inline cv::viz::Color cv::viz::Color::black()   { return Color(  0,   0,   0); }
 inline cv::viz::Color cv::viz::Color::green()   { return Color(  0, 255,   0); }

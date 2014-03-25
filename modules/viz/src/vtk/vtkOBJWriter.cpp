@@ -54,6 +54,7 @@ cv::viz::vtkOBJWriter::vtkOBJWriter()
     std::ofstream fout; // only used to extract the default precision
     this->DecimalPrecision = fout.precision();
     this->FileName = NULL;
+    this->FileType = VTK_ASCII;
 }
 
 cv::viz::vtkOBJWriter::~vtkOBJWriter(){}
@@ -64,27 +65,14 @@ void cv::viz::vtkOBJWriter::WriteData()
     if (!input)
         return;
 
-    if (!this->FileName )
-    {
-        vtkErrorMacro(<< "No FileName specified! Can't write!");
-        this->SetErrorCode(vtkErrorCode::NoFileNameError);
+    std::ostream *outfilep = this->OpenVTKFile();
+    if (!outfilep)
         return;
-    }
-
-    vtkDebugMacro(<<"Opening vtk file for writing...");
-    ostream *outfilep = new ofstream(this->FileName, ios::out);
-    if (outfilep->fail())
-    {
-        vtkErrorMacro(<< "Unable to open file: "<< this->FileName);
-        this->SetErrorCode(vtkErrorCode::CannotOpenFileError);
-        delete outfilep;
-        return;
-    }
 
     std::ostream& outfile = *outfilep;
 
     //write header
-    outfile << "# wavefront obj file written by opencv viz module" << std::endl << std::endl;
+    outfile << "# wavefront obj file written by the visualization toolkit" << std::endl << std::endl;
     outfile << "mtllib NONE" << std::endl << std::endl;
 
     // write out the points
@@ -236,8 +224,7 @@ void cv::viz::vtkOBJWriter::WriteData()
         }
     } /* if (input->GetNumberOfStrips() > 0) */
 
-    vtkDebugMacro(<<"Closing vtk file\n");
-    delete outfilep;
+    this->CloseVTKFile(outfilep);
 
     // Delete the file if an error occurred
     if (this->ErrorCode == vtkErrorCode::OutOfDiskSpaceError)
@@ -251,20 +238,4 @@ void cv::viz::vtkOBJWriter::PrintSelf(ostream& os, vtkIndent indent)
 {
     Superclass::PrintSelf(os, indent);
     os << indent << "DecimalPrecision: " << DecimalPrecision << "\n";
-}
-
-int cv::viz::vtkOBJWriter::FillInputPortInformation(int, vtkInformation *info)
-{
-    info->Set(vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkPolyData");
-    return 1;
-}
-
-vtkPolyData* cv::viz::vtkOBJWriter::GetInput()
-{
-    return vtkPolyData::SafeDownCast(this->Superclass::GetInput());
-}
-
-vtkPolyData* cv::viz::vtkOBJWriter::GetInput(int port)
-{
-    return vtkPolyData::SafeDownCast(this->Superclass::GetInput(port));
 }

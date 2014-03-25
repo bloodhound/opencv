@@ -61,22 +61,10 @@ void cv::viz::vtkXYZWriter::WriteData()
     if (!input)
         return;
 
-    if (!this->FileName )
-    {
-        vtkErrorMacro(<< "No FileName specified! Can't write!");
-        this->SetErrorCode(vtkErrorCode::NoFileNameError);
+    // OpenVTKFile() will report any errors that happen
+    ostream *outfilep = this->OpenVTKFile();
+    if (!outfilep)
         return;
-    }
-
-    vtkDebugMacro(<<"Opening vtk file for writing...");
-    ostream *outfilep = new ofstream(this->FileName, ios::out);
-    if (outfilep->fail())
-    {
-        vtkErrorMacro(<< "Unable to open file: "<< this->FileName);
-        this->SetErrorCode(vtkErrorCode::CannotOpenFileError);
-        delete outfilep;
-        return;
-    }
 
     ostream &outfile = *outfilep;
 
@@ -88,8 +76,7 @@ void cv::viz::vtkXYZWriter::WriteData()
     }
 
     // Close the file
-    vtkDebugMacro(<<"Closing vtk file\n");
-    delete outfilep;
+    this->CloseVTKFile(outfilep);
 
     // Delete the file if an error occurred
     if (this->ErrorCode == vtkErrorCode::OutOfDiskSpaceError)
@@ -99,24 +86,8 @@ void cv::viz::vtkXYZWriter::WriteData()
     }
 }
 
-int cv::viz::vtkXYZWriter::FillInputPortInformation(int, vtkInformation *info)
-{
-    info->Set(vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkPolyData");
-    return 1;
-}
-
 void cv::viz::vtkXYZWriter::PrintSelf(ostream& os, vtkIndent indent)
 {
     this->Superclass::PrintSelf(os,indent);
     os << indent << "DecimalPrecision: " << this->DecimalPrecision << "\n";
-}
-
-vtkPolyData* cv::viz::vtkXYZWriter::GetInput()
-{
-    return vtkPolyData::SafeDownCast(this->Superclass::GetInput());
-}
-
-vtkPolyData* cv::viz::vtkXYZWriter::GetInput(int port)
-{
-    return vtkPolyData::SafeDownCast(this->Superclass::GetInput(port));
 }

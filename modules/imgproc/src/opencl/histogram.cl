@@ -37,21 +37,11 @@
 //
 //
 
-#ifndef cn
-#define cn 1
-#endif
-
-#if cn == 16
-#define T uchar16
-#else
-#define T uchar
-#endif
-
 __kernel void calculate_histogram(__global const uchar * src, int src_step, int src_offset, int src_rows, int src_cols,
                                   __global uchar * hist, int total)
 {
     int lid = get_local_id(0);
-    int id = get_global_id(0) * cn;
+    int id = get_global_id(0);
     int gid = get_group_id(0);
 
     __local int localhist[BINS];
@@ -60,30 +50,10 @@ __kernel void calculate_histogram(__global const uchar * src, int src_step, int 
         localhist[i] = 0;
     barrier(CLK_LOCAL_MEM_FENCE);
 
-    for (int grain = HISTS_COUNT * WGS * cn; id < total; id += grain)
+    for (int grain = HISTS_COUNT * WGS; id < total; id += grain)
     {
         int src_index = mad24(id / src_cols, src_step, src_offset + id % src_cols);
-#if cn == 1
-        atomic_inc(localhist + convert_int(src[src_index]));
-#else
-        T value = *(__global const T *)(src + src_index);
-        atomic_inc(localhist + convert_int(value.s0));
-        atomic_inc(localhist + convert_int(value.s1));
-        atomic_inc(localhist + convert_int(value.s2));
-        atomic_inc(localhist + convert_int(value.s3));
-        atomic_inc(localhist + convert_int(value.s4));
-        atomic_inc(localhist + convert_int(value.s5));
-        atomic_inc(localhist + convert_int(value.s6));
-        atomic_inc(localhist + convert_int(value.s7));
-        atomic_inc(localhist + convert_int(value.s8));
-        atomic_inc(localhist + convert_int(value.s9));
-        atomic_inc(localhist + convert_int(value.sA));
-        atomic_inc(localhist + convert_int(value.sB));
-        atomic_inc(localhist + convert_int(value.sC));
-        atomic_inc(localhist + convert_int(value.sD));
-        atomic_inc(localhist + convert_int(value.sE));
-        atomic_inc(localhist + convert_int(value.sF));
-#endif
+        atomic_inc(localhist + (int)src[src_index]);
     }
     barrier(CLK_LOCAL_MEM_FENCE);
 

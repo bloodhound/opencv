@@ -114,8 +114,6 @@ namespace cv
             double getRenderingProperty(const String &id, int property);
 
             void setRepresentation(int representation);
-
-            void setGlobalWarnings(bool enabled = false);
         private:
 
             struct VizImpl;

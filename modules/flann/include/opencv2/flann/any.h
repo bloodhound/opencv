@@ -155,27 +155,13 @@ SMALL_POLICY(bool);
 
 #undef SMALL_POLICY
 
-template <typename T>
-class SinglePolicy
-{
-    SinglePolicy();
-    SinglePolicy(const SinglePolicy& other);
-    SinglePolicy& operator=(const SinglePolicy& other);
-
-public:
-    static base_any_policy* get_policy();
-
-private:
-    static typename choose_policy<T>::type policy;
-};
-
-template <typename T>
-typename choose_policy<T>::type SinglePolicy<T>::policy;
-
 /// This function will return a different policy for each type.
-template <typename T>
-inline base_any_policy* SinglePolicy<T>::get_policy() { return &policy; }
-
+template<typename T>
+base_any_policy* get_policy()
+{
+    static typename choose_policy<T>::type policy;
+    return &policy;
+}
 } // namespace anyimpl
 
 struct any
@@ -189,26 +175,26 @@ public:
     /// Initializing constructor.
     template <typename T>
     any(const T& x)
-        : policy(anyimpl::SinglePolicy<anyimpl::empty_any>::get_policy()), object(NULL)
+        : policy(anyimpl::get_policy<anyimpl::empty_any>()), object(NULL)
     {
         assign(x);
     }
 
     /// Empty constructor.
     any()
-        : policy(anyimpl::SinglePolicy<anyimpl::empty_any>::get_policy()), object(NULL)
+        : policy(anyimpl::get_policy<anyimpl::empty_any>()), object(NULL)
     { }
 
     /// Special initializing constructor for string literals.
     any(const char* x)
-        : policy(anyimpl::SinglePolicy<anyimpl::empty_any>::get_policy()), object(NULL)
+        : policy(anyimpl::get_policy<anyimpl::empty_any>()), object(NULL)
     {
         assign(x);
     }
 
     /// Copy constructor.
     any(const any& x)
-        : policy(anyimpl::SinglePolicy<anyimpl::empty_any>::get_policy()), object(NULL)
+        : policy(anyimpl::get_policy<anyimpl::empty_any>()), object(NULL)
     {
         assign(x);
     }
@@ -233,7 +219,7 @@ public:
     any& assign(const T& x)
     {
         reset();
-        policy = anyimpl::SinglePolicy<T>::get_policy();
+        policy = anyimpl::get_policy<T>();
         policy->copy_from_value(&x, &object);
         return *this;
     }
@@ -288,7 +274,7 @@ public:
     void reset()
     {
         policy->static_delete(&object);
-        policy = anyimpl::SinglePolicy<anyimpl::empty_any>::get_policy();
+        policy = anyimpl::get_policy<anyimpl::empty_any>();
     }
 
     /// Returns true if the two types are the same.

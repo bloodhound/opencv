@@ -1,8 +1,6 @@
 #include <iostream>
 #include <iomanip>
 #include <string>
-#include <ctype.h>
-
 #include "opencv2/core.hpp"
 #include "opencv2/core/utility.hpp"
 #include "opencv2/highgui.hpp"

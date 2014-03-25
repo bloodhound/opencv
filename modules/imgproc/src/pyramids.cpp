@@ -407,7 +407,7 @@ static bool ocl_pyrDown( InputArray _src, OutputArray _dst, const Size& _dsz, in
 {
     int type = _src.type(), depth = CV_MAT_DEPTH(type), channels = CV_MAT_CN(type);
 
-    if (channels > 4 || borderType != BORDER_DEFAULT)
+    if ((channels != 1 && channels != 2 && channels != 4) || borderType != BORDER_DEFAULT)
         return false;
 
     bool doubleSupport = ocl::Device::getDefault().doubleFPConfig() > 0;
@@ -426,16 +426,12 @@ static bool ocl_pyrDown( InputArray _src, OutputArray _dst, const Size& _dsz, in
 
     int float_depth = depth == CV_64F ? CV_64F : CV_32F;
     char cvt[2][50];
-    String buildOptions = format(
-            "-D T=%s -D FT=%s -D convertToT=%s -D convertToFT=%s%s "
-            "-D T1=%s -D cn=%d",
-            ocl::typeToStr(type), ocl::typeToStr(CV_MAKETYPE(float_depth, channels)),
-            ocl::convertTypeStr(float_depth, depth, channels, cvt[0]),
-            ocl::convertTypeStr(depth, float_depth, channels, cvt[1]),
-            doubleSupport ? " -D DOUBLE_SUPPORT" : "",
-            ocl::typeToStr(depth), channels
-    );
-    ocl::Kernel k("pyrDown", ocl::imgproc::pyr_down_oclsrc, buildOptions);
+    ocl::Kernel k("pyrDown", ocl::imgproc::pyr_down_oclsrc,
+                 format("-D T=%s -D FT=%s -D convertToT=%s -D convertToFT=%s%s",
+                 ocl::typeToStr(type), ocl::typeToStr(CV_MAKETYPE(float_depth, channels)),
+                 ocl::convertTypeStr(float_depth, depth, channels, cvt[0]),
+                 ocl::convertTypeStr(depth, float_depth, channels, cvt[1]),
+                 doubleSupport ? " -D DOUBLE_SUPPORT" : ""));
     if (k.empty())
         return false;
 
@@ -450,7 +446,7 @@ static bool ocl_pyrUp( InputArray _src, OutputArray _dst, const Size& _dsz, int 
 {
     int type = _src.type(), depth = CV_MAT_DEPTH(type), channels = CV_MAT_CN(type);
 
-    if (channels > 4 || borderType != BORDER_DEFAULT)
+    if ((channels != 1 && channels != 2 && channels != 4) || borderType != BORDER_DEFAULT)
         return false;
 
     bool doubleSupport = ocl::Device::getDefault().doubleFPConfig() > 0;
@@ -468,16 +464,12 @@ static bool ocl_pyrUp( InputArray _src, OutputArray _dst, const Size& _dsz, int 
 
     int float_depth = depth == CV_64F ? CV_64F : CV_32F;
     char cvt[2][50];
-    String buildOptions = format(
-            "-D T=%s -D FT=%s -D convertToT=%s -D convertToFT=%s%s "
-            "-D T1=%s -D cn=%d",
-            ocl::typeToStr(type), ocl::typeToStr(CV_MAKETYPE(float_depth, channels)),
-            ocl::convertTypeStr(float_depth, depth, channels, cvt[0]),
-            ocl::convertTypeStr(depth, float_depth, channels, cvt[1]),
-            doubleSupport ? " -D DOUBLE_SUPPORT" : "",
-            ocl::typeToStr(depth), channels
-    );
-    ocl::Kernel k("pyrUp", ocl::imgproc::pyr_up_oclsrc, buildOptions);
+    ocl::Kernel k("pyrUp", ocl::imgproc::pyr_up_oclsrc,
+                 format("-D T=%s -D FT=%s -D convertToT=%s -D convertToFT=%s%s",
+                 ocl::typeToStr(type), ocl::typeToStr(CV_MAKETYPE(float_depth, channels)),
+                 ocl::convertTypeStr(float_depth, depth, channels, cvt[0]),
+                 ocl::convertTypeStr(depth, float_depth, channels, cvt[1]),
+                 doubleSupport ? " -D DOUBLE_SUPPORT" : ""));
     if (k.empty())
         return false;
 

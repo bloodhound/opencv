@@ -216,7 +216,7 @@ public:
     // all features have same size
     static const int FEATURE_SIZE = 7;
 
-    explicit FAST_CUDA(int threshold, bool nonmaxSuppression = true, double keypointsRatio = 0.05);
+    explicit FAST_CUDA(int threshold, bool nonmaxSupression = true, double keypointsRatio = 0.05);
 
     //! finds the keypoints using FAST detector
     //! supports only CV_8UC1 images
@@ -232,19 +232,19 @@ public:
     //! release temporary buffer's memory
     void release();
 
-    bool nonmaxSuppression;
+    bool nonmaxSupression;
 
     int threshold;
 
     //! max keypoints = keypointsRatio * img.size().area()
     double keypointsRatio;
 
-    //! find keypoints and compute it's response if nonmaxSuppression is true
+    //! find keypoints and compute it's response if nonmaxSupression is true
     //! return count of detected keypoints
     int calcKeyPointsLocation(const GpuMat& image, const GpuMat& mask);
 
     //! get final array of keypoints
-    //! performs nonmax suppression if needed
+    //! performs nonmax supression if needed
     //! return final count of keypoints
     int getKeyPoints(GpuMat& keypoints);
 
@@ -303,10 +303,10 @@ public:
     //! returns the descriptor size in bytes
     inline int descriptorSize() const { return kBytes; }
 
-    inline void setFastParams(int threshold, bool nonmaxSuppression = true)
+    inline void setFastParams(int threshold, bool nonmaxSupression = true)
     {
         fastDetector_.threshold = threshold;
-        fastDetector_.nonmaxSuppression = nonmaxSuppression;
+        fastDetector_.nonmaxSupression = nonmaxSupression;
     }
 
     //! release temporary buffer's memory

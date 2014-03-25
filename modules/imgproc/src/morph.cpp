@@ -42,6 +42,7 @@
 
 #include "precomp.hpp"
 #include <limits.h>
+#include <stdio.h>
 #include "opencl_kernels.hpp"
 
 /****************************************************************************************\
@@ -1285,31 +1286,21 @@ static bool IPPMorphOp(int op, InputArray _src, OutputArray _dst,
 
 #ifdef HAVE_OPENCL
 
-static bool ocl_morphology_op(InputArray _src, OutputArray _dst, Mat kernel,
-                              const Size & ksize, const Point & anchor, int iterations, int op)
+static bool ocl_morphology_op(InputArray _src, OutputArray _dst, InputArray _kernel, Size &ksize, const Point anchor, int iterations, int op)
 {
-    CV_Assert(op == MORPH_ERODE || op == MORPH_DILATE);
-
-    int type = _src.type(), depth = CV_MAT_DEPTH(type), cn = CV_MAT_CN(type);
     bool doubleSupport = ocl::Device::getDefault().doubleFPConfig() > 0;
 
-    if (depth == CV_64F && !doubleSupport)
+    if (_src.depth() == CV_64F && !doubleSupport)
         return false;
 
     UMat kernel8U;
-    kernel.convertTo(kernel8U, CV_8U);
-    kernel8U = kernel8U.reshape(1, 1);
+    _kernel.getUMat().convertTo(kernel8U, CV_8U);
+    UMat kernel = kernel8U.reshape(1, 1);
 
     bool rectKernel = true;
-    {
-        Mat m = kernel.reshape(1, 1);
-        for (int i = 0; i < m.size().area(); ++i)
-            if (m.at<uchar>(i) != 1)
-            {
-                rectKernel = false;
-                break;
-            }
-    }
+    for(int i = 0; i < kernel.rows * kernel.cols; ++i)
+        if(kernel.getMat(ACCESS_READ).at<uchar>(i) != 1)
+            rectKernel = false;
 
     UMat src = _src.getUMat();
 
@@ -1320,20 +1311,19 @@ static bool ocl_morphology_op(InputArray _src, OutputArray _dst, Mat kernel,
 #endif
     size_t globalThreads[3] = {(src.cols + localThreads[0] - 1) / localThreads[0] *localThreads[0], (src.rows + localThreads[1] - 1) / localThreads[1] *localThreads[1], 1};
 
-    if (localThreads[0]*localThreads[1] * 2 < (localThreads[0] + ksize.width - 1) * (localThreads[1] + ksize.height - 1))
+    if(localThreads[0]*localThreads[1] * 2 < (localThreads[0] + ksize.width - 1) * (localThreads[1] + ksize.height - 1))
         return false;
 
-    static const char * const op2str[] = { "ERODE", "DILATE" };
-    String buildOptions = format("-D RADIUSX=%d -D RADIUSY=%d -D LSIZE0=%d -D LSIZE1=%d -D %s%s%s"
-                                 " -D T=%s -D DEPTH_%d -D cn=%d -D T1=%s", anchor.x, anchor.y,
-                                 (int)localThreads[0], (int)localThreads[1], op2str[op],
-                                 doubleSupport ? " -D DOUBLE_SUPPORT" : "", rectKernel ? " -D RECTKERNEL" : "",
-                                 ocl::typeToStr(_src.type()), _src.depth(), cn, ocl::typeToStr(depth));
+    char compile_option[128];
+    static const char* op2str[] = {"ERODE", "DILATE"};
+    sprintf(compile_option, "-D RADIUSX=%d -D RADIUSY=%d -D LSIZE0=%d -D LSIZE1=%d -D %s %s %s -D GENTYPE=%s -D DEPTH_%d",
+        anchor.x, anchor.y, (int)localThreads[0], (int)localThreads[1], op2str[op], doubleSupport?"-D DOUBLE_SUPPORT" :"", rectKernel?"-D RECTKERNEL":"",
+        ocl::typeToStr(_src.type()), _src.depth() );
 
     std::vector<ocl::Kernel> kernels;
-    for (int i = 0; i < iterations; i++)
+    for(int i = 0; i<iterations; i++)
     {
-        ocl::Kernel k("morph", ocl::imgproc::morph_oclsrc, buildOptions);
+        ocl::Kernel k( "morph", ocl::imgproc::morph_oclsrc, compile_option);
         if (k.empty())
             return false;
         kernels.push_back(k);
@@ -1342,35 +1332,38 @@ static bool ocl_morphology_op(InputArray _src, OutputArray _dst, Mat kernel,
     _dst.create(src.size(), src.type());
     UMat dst = _dst.getUMat();
 
-    if (iterations == 1 && src.u != dst.u)
+    if( iterations== 1 && src.u != dst.u)
     {
         Size wholesize;
         Point ofs;
         src.locateROI(wholesize, ofs);
         int wholecols = wholesize.width, wholerows = wholesize.height;
 
-        kernels[0].args(ocl::KernelArg::ReadOnlyNoSize(src), ocl::KernelArg::WriteOnlyNoSize(dst),
-                        ofs.x, ofs.y, src.cols, src.rows, ocl::KernelArg::PtrReadOnly(kernel8U),
-                        wholecols, wholerows);
+        int idxArg = 0;
+        idxArg = kernels[0].set(idxArg, ocl::KernelArg::ReadOnlyNoSize(src));
+        idxArg = kernels[0].set(idxArg, ocl::KernelArg::WriteOnlyNoSize(dst));
+        idxArg = kernels[0].set(idxArg, ofs.x);
+        idxArg = kernels[0].set(idxArg, ofs.y);
+        idxArg = kernels[0].set(idxArg, src.cols);
+        idxArg = kernels[0].set(idxArg, src.rows);
+        idxArg = kernels[0].set(idxArg, ocl::KernelArg::PtrReadOnly(kernel));
+        idxArg = kernels[0].set(idxArg, wholecols);
+        idxArg = kernels[0].set(idxArg, wholerows);
 
         return kernels[0].run(2, globalThreads, localThreads, false);
     }
 
-    for (int i = 0; i < iterations; i++)
+    for(int i = 0; i< iterations; i++)
     {
         UMat source;
         Size wholesize;
         Point ofs;
-
-        if (i == 0)
+        if( i == 0)
         {
             int cols =  src.cols, rows = src.rows;
             src.locateROI(wholesize,ofs);
             src.adjustROI(ofs.y, wholesize.height - rows - ofs.y, ofs.x, wholesize.width - cols - ofs.x);
-            if(src.u != dst.u)
-                source = src;
-            else
-                src.copyTo(source);
+            src.copyTo(source);
             src.adjustROI(-ofs.y, -wholesize.height + rows + ofs.y, -ofs.x, -wholesize.width + cols + ofs.x);
             source.adjustROI(-ofs.y, -wholesize.height + rows + ofs.y, -ofs.x, -wholesize.width + cols + ofs.x);
         }
@@ -1383,11 +1376,20 @@ static bool ocl_morphology_op(InputArray _src, OutputArray _dst, Mat kernel,
             dst.adjustROI(-ofs.y, -wholesize.height + rows + ofs.y, -ofs.x, -wholesize.width + cols + ofs.x);
             source.adjustROI(-ofs.y, -wholesize.height + rows + ofs.y, -ofs.x, -wholesize.width + cols + ofs.x);
         }
-        source.locateROI(wholesize, ofs);
 
-        kernels[i].args(ocl::KernelArg::ReadOnlyNoSize(source), ocl::KernelArg::WriteOnlyNoSize(dst),
-                        ofs.x, ofs.y, source.cols, source.rows, ocl::KernelArg::PtrReadOnly(kernel8U),
-                        wholesize.width, wholesize.height);
+        source.locateROI(wholesize, ofs);
+        int wholecols = wholesize.width, wholerows = wholesize.height;
+
+        int idxArg = 0;
+        idxArg = kernels[i].set(idxArg, ocl::KernelArg::ReadOnlyNoSize(source));
+        idxArg = kernels[i].set(idxArg, ocl::KernelArg::WriteOnlyNoSize(dst));
+        idxArg = kernels[i].set(idxArg, ofs.x);
+        idxArg = kernels[i].set(idxArg, ofs.y);
+        idxArg = kernels[i].set(idxArg, source.cols);
+        idxArg = kernels[i].set(idxArg, source.rows);
+        idxArg = kernels[i].set(idxArg, ocl::KernelArg::PtrReadOnly(kernel));
+        idxArg = kernels[i].set(idxArg, wholecols);
+        idxArg = kernels[i].set(idxArg, wholerows);
 
         if (!kernels[i].run(2, globalThreads, localThreads, false))
             return false;
@@ -1403,7 +1405,7 @@ static void morphOp( int op, InputArray _src, OutputArray _dst,
                      int borderType, const Scalar& borderValue )
 {
 #ifdef HAVE_OPENCL
-    int src_type = _src.type(),
+    int src_type = _src.type(), dst_type = _dst.type(),
         src_cn = CV_MAT_CN(src_type), src_depth = CV_MAT_DEPTH(src_type);
 #endif
 
@@ -1411,18 +1413,20 @@ static void morphOp( int op, InputArray _src, OutputArray _dst,
     Size ksize = kernel.data ? kernel.size() : Size(3,3);
     anchor = normalizeAnchor(anchor, ksize);
 
+    CV_Assert( anchor.inside(Rect(0, 0, ksize.width, ksize.height)) );
+
 #if defined (HAVE_IPP) && (IPP_VERSION_MAJOR >= 7)
     if( IPPMorphOp(op, _src, _dst, kernel, anchor, iterations, borderType, borderValue) )
         return;
 #endif
 
-    if (iterations == 0 || kernel.rows*kernel.cols == 1)
+    if( iterations == 0 || kernel.rows*kernel.cols == 1 )
     {
         _src.copyTo(_dst);
         return;
     }
 
-    if (!kernel.data)
+    if( !kernel.data )
     {
         kernel = getStructuringElement(MORPH_RECT, Size(1+iterations*2,1+iterations*2));
         anchor = Point(iterations, iterations);
@@ -1438,7 +1442,8 @@ static void morphOp( int op, InputArray _src, OutputArray _dst,
         iterations = 1;
     }
 
-    CV_OCL_RUN(_dst.isUMat() && _src.dims() <= 2 && src_cn <= 4 &&
+    CV_OCL_RUN(_dst.isUMat() && _src.size() == _dst.size() && src_type == dst_type &&
+               _src.dims() <= 2 && (src_cn == 1 || src_cn == 4) && anchor.x == -1 && anchor.y == -1 &&
                (src_depth == CV_8U || src_depth == CV_32F || src_depth == CV_64F ) &&
                borderType == cv::BORDER_CONSTANT && borderValue == morphologyDefaultBorderValue() &&
                (op == MORPH_ERODE || op == MORPH_DILATE),

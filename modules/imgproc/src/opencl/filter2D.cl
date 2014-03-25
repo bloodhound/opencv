@@ -122,7 +122,7 @@
     }
 #ifdef BORDER_REFLECT
 #define EXTRAPOLATE(x, y, minX, minY, maxX, maxY) EXTRAPOLATE_(x, y, minX, minY, maxX, maxY, 0)
-#elif defined(BORDER_REFLECT_101) || defined(BORDER_REFLECT101)
+#elif defined(BORDER_REFLECT_101)
 #define EXTRAPOLATE(x, y, minX, minY, maxX, maxY) EXTRAPOLATE_(x, y, minX, minY, maxX, maxY, 1)
 #endif
 #else
@@ -142,49 +142,109 @@
     }
 #endif
 
-#ifdef DOUBLE_SUPPORT
+#if USE_DOUBLE
 #ifdef cl_amd_fp64
 #pragma OPENCL EXTENSION cl_amd_fp64:enable
 #elif defined (cl_khr_fp64)
 #pragma OPENCL EXTENSION cl_khr_fp64:enable
 #endif
-#endif
-
-#if cn != 3
-#define loadpix(addr) *(__global const srcT *)(addr)
-#define storepix(val, addr)  *(__global dstT *)(addr) = val
-#define SRCSIZE (int)sizeof(srcT)
-#define DSTSIZE (int)sizeof(dstT)
+#define FPTYPE double
+#define CONVERT_TO_FPTYPE CAT(convert_double, VEC_SIZE)
 #else
-#define loadpix(addr) vload3(0, (__global const srcT1 *)(addr))
-#define storepix(val, addr) vstore3(val, 0, (__global dstT1 *)(addr))
-#define SRCSIZE (int)sizeof(srcT1) * cn
-#define DSTSIZE (int)sizeof(dstT1) * cn
+#define FPTYPE float
+#define CONVERT_TO_FPTYPE CAT(convert_float, VEC_SIZE)
 #endif
 
-#define noconvert
+#if DATA_DEPTH == 0
+#define BASE_TYPE uchar
+#elif DATA_DEPTH == 1
+#define BASE_TYPE char
+#elif DATA_DEPTH == 2
+#define BASE_TYPE ushort
+#elif DATA_DEPTH == 3
+#define BASE_TYPE short
+#elif DATA_DEPTH == 4
+#define BASE_TYPE int
+#elif DATA_DEPTH == 5
+#define BASE_TYPE float
+#elif DATA_DEPTH == 6
+#define BASE_TYPE double
+#else
+#error data_depth
+#endif
+
+#define __CAT(x, y) x##y
+#define CAT(x, y) __CAT(x, y)
+
+#define uchar1 uchar
+#define char1 char
+#define ushort1 ushort
+#define short1 short
+#define int1 int
+#define float1 float
+#define double1 double
+
+#define convert_uchar1_sat_rte convert_uchar_sat_rte
+#define convert_char1_sat_rte convert_char_sat_rte
+#define convert_ushort1_sat_rte convert_ushort_sat_rte
+#define convert_short1_sat_rte convert_short_sat_rte
+#define convert_int1_sat_rte convert_int_sat_rte
+#define convert_float1
+#define convert_double1
+
+#if DATA_DEPTH == 5 || DATA_DEPTH == 6
+#define CONVERT_TO_TYPE CAT(CAT(convert_, BASE_TYPE), VEC_SIZE)
+#else
+#define CONVERT_TO_TYPE CAT(CAT(CAT(convert_, BASE_TYPE), VEC_SIZE), _sat_rte)
+#endif
+
+#define VEC_SIZE DATA_CHAN
+
+#define VEC_TYPE CAT(BASE_TYPE, VEC_SIZE)
+#define TYPE VEC_TYPE
+
+#define SCALAR_TYPE CAT(FPTYPE, VEC_SIZE)
+
+#define INTERMEDIATE_TYPE CAT(FPTYPE, VEC_SIZE)
 
 struct RectCoords
 {
     int x1, y1, x2, y2;
 };
 
-inline WT readSrcPixel(int2 pos, __global const uchar * srcptr, int src_step, const struct RectCoords srcCoords)
+//#define DEBUG
+#ifdef DEBUG
+#define DEBUG_ONLY(x) x
+#define ASSERT(condition) do { if (!(condition)) { printf("BUG in boxFilter kernel (global=%d,%d): " #condition "\n", get_global_id(0), get_global_id(1)); } } while (0)
+#else
+#define DEBUG_ONLY(x) (void)0
+#define ASSERT(condition) (void)0
+#endif
+
+
+inline INTERMEDIATE_TYPE readSrcPixel(int2 pos, __global const uchar* srcptr, int srcstep, const struct RectCoords srcCoords
+#ifdef BORDER_CONSTANT
+               , SCALAR_TYPE borderValue
+#endif
+    )
 {
 #ifdef BORDER_ISOLATED
-    if (pos.x >= srcCoords.x1 && pos.y >= srcCoords.y1 && pos.x < srcCoords.x2 && pos.y < srcCoords.y2)
+    if(pos.x >= srcCoords.x1 && pos.y >= srcCoords.y1 && pos.x < srcCoords.x2 && pos.y < srcCoords.y2)
 #else
-    if (pos.x >= 0 && pos.y >= 0 && pos.x < srcCoords.x2 && pos.y < srcCoords.y2)
+    if(pos.x >= 0 && pos.y >= 0 && pos.x < srcCoords.x2 && pos.y < srcCoords.y2)
 #endif
     {
-        return convertToWT(loadpix(srcptr + mad24(pos.y, src_step, pos.x * SRCSIZE)));
+        //__global TYPE* ptr = (__global TYPE*)((__global char*)src + pos.x * sizeof(TYPE) + pos.y * srcStepBytes);
+        __global TYPE* ptr = (__global TYPE*)(srcptr + pos.y * srcstep + pos.x * sizeof(TYPE));
+        return CONVERT_TO_FPTYPE(*ptr);
     }
     else
     {
 #ifdef BORDER_CONSTANT
-        return (WT)(0);
+        return borderValue;
 #else
-        int selected_col = pos.x, selected_row = pos.y;
+        int selected_col = pos.x;
+        int selected_row = pos.y;
 
         EXTRAPOLATE(selected_col, selected_row,
 #ifdef BORDER_ISOLATED
@@ -195,40 +255,68 @@ inline WT readSrcPixel(int2 pos, __global const uchar * srcptr, int src_step, co
                 srcCoords.x2, srcCoords.y2
          );
 
-        return convertToWT(loadpix(srcptr + mad24(selected_row, src_step, selected_col * SRCSIZE)));
+        // debug border mapping
+        //printf("pos=%d,%d --> %d, %d\n", pos.x, pos.y, selected_col, selected_row);
+
+        pos = (int2)(selected_col, selected_row);
+        if(pos.x >= 0 && pos.y >= 0 && pos.x < srcCoords.x2 && pos.y < srcCoords.y2)
+        {
+            //__global TYPE* ptr = (__global TYPE*)((__global char*)src + pos.x * sizeof(TYPE) + pos.y * srcStepBytes);
+            __global TYPE* ptr = (__global TYPE*)(srcptr + pos.y * srcstep + pos.x * sizeof(TYPE));
+            return CONVERT_TO_FPTYPE(*ptr);
+        }
+        else
+        {
+            // for debug only
+            DEBUG_ONLY(printf("BUG in boxFilter kernel\n"));
+            return (FPTYPE)(0.0f);
+        }
 #endif
     }
 }
 
-__kernel void filter2D(__global const uchar * srcptr, int src_step, int srcOffsetX, int srcOffsetY, int srcEndX, int srcEndY,
-                       __global uchar * dstptr, int dst_step, int dst_offset, int rows, int cols, __constant WT1 * kernelData, float delta)
+// INPUT PARAMETER: BLOCK_SIZE_Y (via defines)
+
+__kernel
+__attribute__((reqd_work_group_size(LOCAL_SIZE, 1, 1)))
+void filter2D(__global const uchar* srcptr, int srcstep, int srcOffsetX, int srcOffsetY, int srcEndX, int srcEndY,
+                __global uchar* dstptr, int dststep, int dstoffset,
+               int rows, int cols,
+#ifdef BORDER_CONSTANT
+               SCALAR_TYPE borderValue,
+#endif
+               __constant FPTYPE* kernelData // transposed: [KERNEL_SIZE_X][KERNEL_SIZE_Y2_ALIGNED]
+               )
 {
-    const struct RectCoords srcCoords = { srcOffsetX, srcOffsetY, srcEndX, srcEndY }; // for non-isolated border: offsetX, offsetY, wholeX, wholeY
+    const struct RectCoords srcCoords = {srcOffsetX, srcOffsetY, srcEndX, srcEndY}; // for non-isolated border: offsetX, offsetY, wholeX, wholeY
 
-    int local_id = get_local_id(0);
-    int x = local_id + (LOCAL_SIZE - (KERNEL_SIZE_X - 1)) * get_group_id(0) - ANCHOR_X;
-    int y = get_global_id(1) * BLOCK_SIZE_Y;
+    const int local_id = get_local_id(0);
+    const int x = local_id + (LOCAL_SIZE - (KERNEL_SIZE_X - 1)) * get_group_id(0) - ANCHOR_X;
+    const int y = get_global_id(1) * BLOCK_SIZE_Y;
 
-    WT data[KERNEL_SIZE_Y];
-    __local WT sumOfCols[LOCAL_SIZE];
+    INTERMEDIATE_TYPE data[KERNEL_SIZE_Y];
+    __local INTERMEDIATE_TYPE sumOfCols[LOCAL_SIZE];
 
     int2 srcPos = (int2)(srcCoords.x1 + x, srcCoords.y1 + y - ANCHOR_Y);
 
     int2 pos = (int2)(x, y);
-    __global dstT * dst = (__global dstT *)(dstptr + mad24(pos.y, dst_step, mad24(pos.x, DSTSIZE, dst_offset))); // Pointer can be out of bounds!
-    bool writeResult = local_id >= ANCHOR_X && local_id < LOCAL_SIZE - (KERNEL_SIZE_X - 1 - ANCHOR_X) &&
-                        pos.x >= 0 && pos.x < cols;
+    __global TYPE* dstPtr = (__global TYPE*)((__global char*)dstptr + pos.y * dststep + dstoffset + pos.x * sizeof(TYPE)); // Pointer can be out of bounds!
+    bool writeResult = ((local_id >= ANCHOR_X) && (local_id < LOCAL_SIZE - (KERNEL_SIZE_X - 1 - ANCHOR_X)) &&
+                        (pos.x >= 0) && (pos.x < cols));
 
 #if BLOCK_SIZE_Y > 1
     bool readAllpixels = true;
     int sy_index = 0; // current index in data[] array
 
     dstRowsMax = min(rows, pos.y + BLOCK_SIZE_Y);
-    for ( ;
-          pos.y < dstRowsMax;
-          pos.y++, dst = (__global dstT *)((__global uchar *)dst + dst_step))
+    for (;
+         pos.y < dstRowsMax;
+         pos.y++,
+         dstPtr = (__global TYPE*)((__global char*)dstptr + dststep))
 #endif
     {
+        ASSERT(pos.y < dstRowsMax);
+
         for (
 #if BLOCK_SIZE_Y > 1
             int sy = readAllpixels ? 0 : -1; sy < (readAllpixels ? KERNEL_SIZE_Y : 0);
@@ -237,21 +325,27 @@ __kernel void filter2D(__global const uchar * srcptr, int src_step, int srcOffse
 #endif
             sy++, srcPos.y++)
         {
-            data[sy + sy_index] = readSrcPixel(srcPos, srcptr, src_step, srcCoords);
+            data[sy + sy_index] = readSrcPixel(srcPos, srcptr, srcstep, srcCoords
+#ifdef BORDER_CONSTANT
+                    , borderValue
+#endif
+                    );
         }
 
-        WT total_sum = 0;
+        INTERMEDIATE_TYPE total_sum = 0;
         for (int sx = 0; sx < KERNEL_SIZE_X; sx++)
         {
             {
-                __constant WT1 * k = &kernelData[KERNEL_SIZE_Y2_ALIGNED * sx
+                __constant FPTYPE* k = &kernelData[KERNEL_SIZE_Y2_ALIGNED * sx
 #if BLOCK_SIZE_Y > 1
                                                    + KERNEL_SIZE_Y - sy_index
 #endif
                                                    ];
-                WT tmp_sum = 0;
+                INTERMEDIATE_TYPE tmp_sum = 0;
                 for (int sy = 0; sy < KERNEL_SIZE_Y; sy++)
+                {
                     tmp_sum += data[sy] * k[sy];
+                }
 
                 sumOfCols[local_id] = tmp_sum;
                 barrier(CLK_LOCAL_MEM_FENCE);
@@ -265,12 +359,14 @@ __kernel void filter2D(__global const uchar * srcptr, int src_step, int srcOffse
         }
 
         if (writeResult)
-            storepix(convertToDstT(total_sum + (WT)(delta)), dst);
+        {
+            *dstPtr = CONVERT_TO_TYPE(total_sum);
+        }
 
 #if BLOCK_SIZE_Y > 1
         readAllpixels = false;
 #if BLOCK_SIZE_Y > KERNEL_SIZE_Y
-        sy_index = sy_index + 1 <= KERNEL_SIZE_Y ? sy_index + 1 : 1;
+        sy_index = (sy_index + 1 <= KERNEL_SIZE_Y) ? sy_index + 1 : 1;
 #else
         sy_index++;
 #endif

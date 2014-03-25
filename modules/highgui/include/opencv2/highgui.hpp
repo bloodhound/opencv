@@ -530,8 +530,6 @@ enum { CAP_INTELPERC_DEPTH_MAP              = 0, // Each pixel is a 16-bit integ
        CAP_INTELPERC_IMAGE                  = 3
      };
 
-
-class IVideoCapture;
 class CV_EXPORTS_W VideoCapture
 {
 public:
@@ -556,10 +554,8 @@ public:
 
 protected:
     Ptr<CvCapture> cap;
-    Ptr<IVideoCapture> icap;
-private:
-    static Ptr<IVideoCapture> createCameraCapture(int index);
 };
+
 
 class CV_EXPORTS_W VideoWriter
 {

@@ -1,4 +1,4 @@
-if(IOS)
+if(ANDROID OR IOS)
   ocv_module_disable(superres)
 endif()
 

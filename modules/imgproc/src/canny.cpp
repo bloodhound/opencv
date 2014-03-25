@@ -100,29 +100,19 @@ static bool ocl_Canny(InputArray _src, OutputArray _dst, float low_thresh, float
         low_thresh = std::min(32767.0f, low_thresh);
         high_thresh = std::min(32767.0f, high_thresh);
 
-        if (low_thresh > 0)
-            low_thresh *= low_thresh;
-        if (high_thresh > 0)
-            high_thresh *= high_thresh;
+        if (low_thresh > 0) low_thresh *= low_thresh;
+        if (high_thresh > 0) high_thresh *= high_thresh;
     }
     int low = cvFloor(low_thresh), high = cvFloor(high_thresh);
     Size esize(size.width + 2, size.height + 2);
 
     UMat mag;
-    size_t globalsize[2] = { size.width, size.height }, localsize[2] = { 16, 16 };
+    size_t globalsize[2] = { size.width * cn, size.height }, localsize[2] = { 16, 16 };
 
     if (aperture_size == 3 && !_src.isSubmatrix())
     {
         // Sobel calculation
-        char cvt[2][40];
-        ocl::Kernel calcSobelRowPassKernel("calcSobelRowPass", ocl::imgproc::canny_oclsrc,
-                                           format("-D OP_SOBEL -D cn=%d -D shortT=%s -D ucharT=%s"
-                                                  " -D convertToIntT=%s -D intT=%s -D convertToShortT=%s", cn,
-                                                  ocl::typeToStr(CV_16SC(cn)),
-                                                  ocl::typeToStr(CV_8UC(cn)),
-                                                  ocl::convertTypeStr(CV_8U, CV_32S, cn, cvt[0]),
-                                                  ocl::typeToStr(CV_32SC(cn)),
-                                                  ocl::convertTypeStr(CV_32S, CV_16S, cn, cvt[1])));
+        ocl::Kernel calcSobelRowPassKernel("calcSobelRowPass", ocl::imgproc::canny_oclsrc);
         if (calcSobelRowPassKernel.empty())
             return false;
 
@@ -136,62 +126,58 @@ static bool ocl_Canny(InputArray _src, OutputArray _dst, float low_thresh, float
 
         // magnitude calculation
         ocl::Kernel magnitudeKernel("calcMagnitude_buf", ocl::imgproc::canny_oclsrc,
-                                    format("-D cn=%d%s -D OP_MAG_BUF -D shortT=%s -D convertToIntT=%s -D intT=%s",
-                                           cn, L2gradient ? " -D L2GRAD" : "",
-                                           ocl::typeToStr(CV_16SC(cn)),
-                                           ocl::convertTypeStr(CV_16S, CV_32S, cn, cvt[0]),
-                                           ocl::typeToStr(CV_32SC(cn))));
+                                    L2gradient ? " -D L2GRAD" : "");
         if (magnitudeKernel.empty())
             return false;
 
-        mag = UMat(esize, CV_32SC1, Scalar::all(0));
+        mag = UMat(esize, CV_32SC(cn), Scalar::all(0));
         dx.create(size, CV_16SC(cn));
         dy.create(size, CV_16SC(cn));
 
         magnitudeKernel.args(ocl::KernelArg::ReadOnlyNoSize(dxBuf), ocl::KernelArg::ReadOnlyNoSize(dyBuf),
                              ocl::KernelArg::WriteOnlyNoSize(dx), ocl::KernelArg::WriteOnlyNoSize(dy),
-                             ocl::KernelArg::WriteOnlyNoSize(mag), size.height, size.width);
+                             ocl::KernelArg::WriteOnlyNoSize(mag, cn), size.height, size.width);
 
         if (!magnitudeKernel.run(2, globalsize, localsize, false))
             return false;
     }
     else
     {
-        Sobel(_src, dx, CV_16S, 1, 0, aperture_size, 1, 0, BORDER_REPLICATE);
-        Sobel(_src, dy, CV_16S, 0, 1, aperture_size, 1, 0, BORDER_REPLICATE);
+        dx.create(size, CV_16SC(cn));
+        dy.create(size, CV_16SC(cn));
+
+        Sobel(_src, dx, CV_16SC1, 1, 0, aperture_size, 1, 0, BORDER_REPLICATE);
+        Sobel(_src, dy, CV_16SC1, 0, 1, aperture_size, 1, 0, BORDER_REPLICATE);
 
         // magnitude calculation
         ocl::Kernel magnitudeKernel("calcMagnitude", ocl::imgproc::canny_oclsrc,
-                                    format("-D OP_MAG -D cn=%d%s -D intT=int -D shortT=short -D convertToIntT=convert_int_sat",
-                                           cn, L2gradient ? " -D L2GRAD" : ""));
+                                    L2gradient ? " -D L2GRAD" : "");
         if (magnitudeKernel.empty())
             return false;
 
-        mag = UMat(esize, CV_32SC1, Scalar::all(0));
+        mag = UMat(esize, CV_32SC(cn), Scalar::all(0));
         magnitudeKernel.args(ocl::KernelArg::ReadOnlyNoSize(dx), ocl::KernelArg::ReadOnlyNoSize(dy),
-                             ocl::KernelArg::WriteOnlyNoSize(mag), size.height, size.width);
+                             ocl::KernelArg::WriteOnlyNoSize(mag, cn), size.height, size.width);
 
         if (!magnitudeKernel.run(2, globalsize, NULL, false))
             return false;
     }
 
     // map calculation
-    ocl::Kernel calcMapKernel("calcMap", ocl::imgproc::canny_oclsrc,
-                              format("-D OP_MAP -D cn=%d", cn));
+    ocl::Kernel calcMapKernel("calcMap", ocl::imgproc::canny_oclsrc);
     if (calcMapKernel.empty())
         return false;
 
-    UMat map(esize, CV_32SC1);
+    UMat map(esize, CV_32SC(cn));
     calcMapKernel.args(ocl::KernelArg::ReadOnlyNoSize(dx), ocl::KernelArg::ReadOnlyNoSize(dy),
-                       ocl::KernelArg::ReadOnlyNoSize(mag), ocl::KernelArg::WriteOnlyNoSize(map),
+                       ocl::KernelArg::ReadOnlyNoSize(mag), ocl::KernelArg::WriteOnlyNoSize(map, cn),
                        size.height, size.width, low, high);
 
     if (!calcMapKernel.run(2, globalsize, localsize, false))
         return false;
 
     // local hysteresis thresholding
-    ocl::Kernel edgesHysteresisLocalKernel("edgesHysteresisLocal", ocl::imgproc::canny_oclsrc,
-                                           "-D OP_HYST_LOCAL");
+    ocl::Kernel edgesHysteresisLocalKernel("edgesHysteresisLocal", ocl::imgproc::canny_oclsrc);
     if (edgesHysteresisLocalKernel.empty())
         return false;
 
@@ -207,8 +193,7 @@ static bool ocl_Canny(InputArray _src, OutputArray _dst, float low_thresh, float
 
     for ( ; ; )
     {
-        ocl::Kernel edgesHysteresisGlobalKernel("edgesHysteresisGlobal", ocl::imgproc::canny_oclsrc,
-                                                "-D OP_HYST_GLOBAL");
+        ocl::Kernel edgesHysteresisGlobalKernel("edgesHysteresisGlobal", ocl::imgproc::canny_oclsrc);
         if (edgesHysteresisGlobalKernel.empty())
             return false;
 
@@ -236,15 +221,14 @@ static bool ocl_Canny(InputArray _src, OutputArray _dst, float low_thresh, float
     }
 
     // get edges
-    ocl::Kernel getEdgesKernel("getEdges", ocl::imgproc::canny_oclsrc, "-D OP_EDGES");
+    ocl::Kernel getEdgesKernel("getEdges", ocl::imgproc::canny_oclsrc);
     if (getEdgesKernel.empty())
         return false;
 
-    _dst.create(size, CV_8UC1);
+    _dst.create(size, CV_8UC(cn));
     UMat dst = _dst.getUMat();
 
     getEdgesKernel.args(ocl::KernelArg::ReadOnlyNoSize(map), ocl::KernelArg::WriteOnly(dst));
-
     return getEdgesKernel.run(2, globalsize, NULL, false);
 }
 
@@ -270,12 +254,12 @@ void cv::Canny( InputArray _src, OutputArray _dst,
     }
 
     if ((aperture_size & 1) == 0 || (aperture_size != -1 && (aperture_size < 3 || aperture_size > 7)))
-        CV_Error(CV_StsBadFlag, "Aperture size should be odd");
+        CV_Error(CV_StsBadFlag, "");
 
     if (low_thresh > high_thresh)
         std::swap(low_thresh, high_thresh);
 
-    CV_OCL_RUN(_dst.isUMat() && (cn == 1 || cn == 3),
+    CV_OCL_RUN(_dst.isUMat() && cn == 1,
                ocl_Canny(_src, _dst, (float)low_thresh, (float)high_thresh, aperture_size, L2gradient, cn, size))
 
     Mat src = _src.getMat(), dst = _dst.getMat();
@@ -341,7 +325,7 @@ void cv::Canny( InputArray _src, OutputArray _dst,
     #define CANNY_PUSH(d)    *(d) = uchar(2), *stack_top++ = (d)
     #define CANNY_POP(d)     (d) = *--stack_top
 
-    // calculate magnitude and angle of gradient, perform non-maxima suppression.
+    // calculate magnitude and angle of gradient, perform non-maxima supression.
     // fill the map with one of the following values:
     //   0 - the pixel might belong to an edge
     //   1 - the pixel can not belong to an edge

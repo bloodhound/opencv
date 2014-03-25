@@ -174,25 +174,6 @@ void dumpOpenCLDevice()
         const char* haveAmdFftStr = haveAmdFft() ? "Yes" : "No";
         DUMP_MESSAGE_STDOUT("    Has AMD Fft = "<< haveAmdFftStr);
         DUMP_PROPERTY_XML("cv_ocl_current_AmdFft", haveAmdFft());
-
-
-        DUMP_MESSAGE_STDOUT("    Preferred vector width char = "<< device.preferredVectorWidthChar());
-        DUMP_PROPERTY_XML("cv_ocl_current_preferredVectorWidthChar", device.preferredVectorWidthChar());
-
-        DUMP_MESSAGE_STDOUT("    Preferred vector width short = "<< device.preferredVectorWidthShort());
-        DUMP_PROPERTY_XML("cv_ocl_current_preferredVectorWidthShort", device.preferredVectorWidthShort());
-
-        DUMP_MESSAGE_STDOUT("    Preferred vector width int = "<< device.preferredVectorWidthInt());
-        DUMP_PROPERTY_XML("cv_ocl_current_preferredVectorWidthInt", device.preferredVectorWidthInt());
-
-        DUMP_MESSAGE_STDOUT("    Preferred vector width long = "<< device.preferredVectorWidthLong());
-        DUMP_PROPERTY_XML("cv_ocl_current_preferredVectorWidthLong", device.preferredVectorWidthLong());
-
-        DUMP_MESSAGE_STDOUT("    Preferred vector width float = "<< device.preferredVectorWidthFloat());
-        DUMP_PROPERTY_XML("cv_ocl_current_preferredVectorWidthFloat", device.preferredVectorWidthFloat());
-
-        DUMP_MESSAGE_STDOUT("    Preferred vector width double = "<< device.preferredVectorWidthDouble());
-        DUMP_PROPERTY_XML("cv_ocl_current_preferredVectorWidthDouble", device.preferredVectorWidthDouble());
     }
     catch (...)
     {
@@ -223,14 +204,14 @@ Mat TestUtils::readImageType(const String &fname, int type)
     return src;
 }
 
-double TestUtils::checkNorm1(InputArray m, InputArray mask)
+double TestUtils::checkNorm(InputArray m)
 {
-    return norm(m.getMat(), NORM_INF, mask);
+    return norm(m.getMat(), NORM_INF);
 }
 
-double TestUtils::checkNorm2(InputArray m1, InputArray m2, InputArray mask)
+double TestUtils::checkNorm(InputArray m1, InputArray m2)
 {
-    return norm(m1.getMat(), m2.getMat(), NORM_INF, mask);
+    return norm(m1.getMat(), m2.getMat(), NORM_INF);
 }
 
 double TestUtils::checkSimilarity(InputArray m1, InputArray m2)

@@ -2904,7 +2904,7 @@ cvCreateImage( CvSize size, int depth, int channels )
 }
 
 
-// initialize IplImage header, allocated by the user
+// initalize IplImage header, allocated by the user
 CV_IMPL IplImage*
 cvInitImageHeader( IplImage * image, CvSize size, int depth,
                    int channels, int origin, int align )

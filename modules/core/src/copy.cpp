@@ -481,13 +481,14 @@ enum { FLIP_COLS = 1 << 0, FLIP_ROWS = 1 << 1, FLIP_BOTH = FLIP_ROWS | FLIP_COLS
 
 static bool ocl_flip(InputArray _src, OutputArray _dst, int flipCode )
 {
-    CV_Assert(flipCode >= - 1 && flipCode <= 1);
-    int type = _src.type(), depth = CV_MAT_DEPTH(type), cn = CV_MAT_CN(type), flipType;
+    int type = _src.type(), cn = CV_MAT_CN(type);
 
-    if (cn > 4)
+    if (cn > 4 || cn == 3)
         return false;
 
     const char * kernelName;
+    int flipType;
+
     if (flipCode == 0)
         kernelName = "arithm_flip_rows", flipType = FLIP_ROWS;
     else if (flipCode > 0)
@@ -506,24 +507,18 @@ static bool ocl_flip(InputArray _src, OutputArray _dst, int flipCode )
     }
 
     ocl::Kernel k(kernelName, ocl::core::flip_oclsrc,
-        format( "-D T=%s -D T1=%s -D cn=%d", ocl::memopTypeToStr(type),
-                ocl::memopTypeToStr(depth), cn));
+        format( "-D type=%s", ocl::memopTypeToStr(type)));
     if (k.empty())
         return false;
 
     _dst.create(size, type);
     UMat src = _src.getUMat(), dst = _dst.getUMat();
 
-    cols = flipType == FLIP_COLS ? (cols + 1) >> 1 : cols;
-    rows = flipType & FLIP_ROWS ? (rows + 1) >> 1 : rows;
+    cols = flipType == FLIP_COLS ? ((cols+1)/2) : cols;
+    rows = flipType & FLIP_ROWS ? ((rows+1)/2) : rows;
 
-    k.args(ocl::KernelArg::ReadOnlyNoSize(src),
-           ocl::KernelArg::WriteOnly(dst), rows, cols);
-
-    size_t maxWorkGroupSize = ocl::Device::getDefault().maxWorkGroupSize();
-    CV_Assert(maxWorkGroupSize % 4 == 0);
-    size_t globalsize[2] = { cols, rows }, localsize[2] = { maxWorkGroupSize / 4, 4 };
-    return k.run(2, globalsize, flipType == FLIP_COLS ? localsize : NULL, false);
+    size_t globalsize[2] = { cols, rows };
+    return k.args(ocl::KernelArg::ReadOnlyNoSize(src), ocl::KernelArg::WriteOnly(dst), rows, cols).run(2, globalsize, NULL, false);
 }
 
 #endif
@@ -783,26 +778,18 @@ namespace cv {
 static bool ocl_copyMakeBorder( InputArray _src, OutputArray _dst, int top, int bottom,
                                 int left, int right, int borderType, const Scalar& value )
 {
-    int type = _src.type(), cn = CV_MAT_CN(type), depth = CV_MAT_DEPTH(type);
+    int type = _src.type(), cn = CV_MAT_CN(type);
     bool isolated = (borderType & BORDER_ISOLATED) != 0;
     borderType &= ~cv::BORDER_ISOLATED;
 
     if ( !(borderType == BORDER_CONSTANT || borderType == BORDER_REPLICATE || borderType == BORDER_REFLECT ||
            borderType == BORDER_WRAP || borderType == BORDER_REFLECT_101) ||
-         cn > 4)
+         cn == 3 || cn > 4)
         return false;
 
     const char * const borderMap[] = { "BORDER_CONSTANT", "BORDER_REPLICATE", "BORDER_REFLECT", "BORDER_WRAP", "BORDER_REFLECT_101" };
-    int scalarcn = cn == 3 ? 4 : cn;
-    int sctype = CV_MAKETYPE(depth, scalarcn);
-    String buildOptions = format(
-            "-D T=%s -D %s "
-            "-D T1=%s -D cn=%d -D ST=%s",
-            ocl::memopTypeToStr(type), borderMap[borderType],
-            ocl::memopTypeToStr(depth), cn, ocl::memopTypeToStr(sctype)
-    );
-
-    ocl::Kernel k("copyMakeBorder", ocl::core::copymakeborder_oclsrc, buildOptions);
+    ocl::Kernel k("copyMakeBorder", ocl::core::copymakeborder_oclsrc,
+                  format("-D T=%s -D %s", ocl::memopTypeToStr(type), borderMap[borderType]));
     if (k.empty())
         return false;
 
@@ -834,7 +821,7 @@ static bool ocl_copyMakeBorder( InputArray _src, OutputArray _dst, int top, int 
     }
 
     k.args(ocl::KernelArg::ReadOnly(src), ocl::KernelArg::WriteOnly(dst),
-           top, left, ocl::KernelArg::Constant(Mat(1, 1, sctype, value)));
+           top, left, ocl::KernelArg::Constant(Mat(1, 1, type, value)));
 
     size_t globalsize[2] = { dst.cols, dst.rows };
     return k.run(2, globalsize, NULL, false);

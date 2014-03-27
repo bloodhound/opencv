@@ -1,0 +1,9 @@
+{
+  "name": "opencv",
+  "description": "Bloodhound's fork of OpenCV",
+  "version": "0.1.0",
+  "url": {
+    "type": "git",
+    "url": "git://github.com/bloodhound/opencv.git"
+  }
+}
